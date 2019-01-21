@@ -1,0 +1,4 @@
+data/
+.ipynb_checkpoints/
+sbatch_script.sh
+predictions.csv
