@@ -40,28 +40,45 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_csv['Id'].unique())
   # Hyperparameters
-  num_epochs = 50
+  num_epochs = 15
   learning_rate = 0.001
-  train_params = {'batch_size': 25, 'shuffle': True, 'num_workers': 5}
-  test_params = {'batch_size': 25, 'shuffle': True, 'num_workers': 5}
-  train_valid_params = {'batch_size': 50, 'shuffle': True, 'num_workers': 5}
+  train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
+  test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
+  train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
+  
+  imagenet_mean = [0.485, 0.456, 0.406]
+  imagenet_std = [0.229, 0.224, 0.225]
 
   # Load Data
-  preprocess_steps = transforms.Compose([
+  train_steps = transforms.Compose([
+    transforms.RandomResizedCrop(size=256),
+    transforms.RandomRotation(15),
+    transforms.RandomHorizontalFlip(),
     transforms.Grayscale(num_output_channels=3),
-    transforms.Resize(200),
-    transforms.CenterCrop(200),
-    transforms.ToTensor()
+    transforms.CenterCrop(224), # ImageNet standard
+    transforms.ToTensor(),
+    transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
+  ])
+
+  test_process_steps = transforms.Compose([
+    transforms.Grayscale(num_output_channels=3),
+    transforms.Resize(256),
+    transforms.CenterCrop(224), # to handle images larger, have to modify last layer's input features
+    transforms.ToTensor(),
+    # Necessary for pre-trained models ...
+    transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
   ])
     
-  train_set = WhalesDataset(is_train = True, transform=preprocess_steps)
-  test_set = WhalesDataset(is_train = False, transform=preprocess_steps)
+  train_set = WhalesDataset(is_train = True, transform=train_steps)
+  train_valid_set = WhalesDataset(is_train = True, transform=test_process_steps)
+  test_set = WhalesDataset(is_train = False, transform=test_process_steps)
   train_loader = data.DataLoader(train_set, **train_params)
-  train_valid_loader = data.DataLoader(train_set, **train_valid_params)
+  train_valid_loader = data.DataLoader(train_valid_set, **train_valid_params)
   test_loader = data.DataLoader(test_set, **test_params)
 
   device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-  model = torchvision.models.resnet50(pretrained=True).to(device)
+  #model = torchvision.models.resnet50(pretrained=True).to(device)
+  model = torchvision.models.resnet101(pretrained=True).to(device)
   model = nn.DataParallel(model) # enable parallelism
   # Freeze all layers
   for i, param in model.named_parameters():
@@ -92,6 +109,7 @@ def train():
       # Forward pass
       outputs = model(images)
       loss = criterion(outputs, whale_ids)
+      #loss = -train_acc(model, train_loader, num_iters = 10)
       # use backward() to do backprop on loss variable
       optimizer.zero_grad()
       loss.backward()
@@ -103,7 +121,7 @@ def train():
         losses.append(loss.item())
         print ('Epoch [{}/{}], Step [{}/{}], Batch Loss: {:.4f}'.format(epoch+1, num_epochs, i+1, total_steps, loss.item()))
         sys.stdout.flush()
-    curr_acc = train_acc(model, train_loader, num_iters = 10)
+    curr_acc = train_acc(model, train_valid_loader, num_iters = 10)
     print('Approx. training accuracy: {}'.format(curr_acc))
   
   # Calculate loss over larger subset of training set instead of batch
