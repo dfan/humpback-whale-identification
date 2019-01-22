@@ -23,14 +23,13 @@ class WhalesDataset(data.dataset.Dataset):
 
   def __getitem__(self, index):
     if self.is_train:
-      whale_id = train_labels_map[train_csv['Id'][index]]
-      img_path = train_csv['Path'][index]
+      whale_id = train_labels_map[train_csv.iloc[index]['Id']] # [] is loc so use iloc!!!
+      img_path = train_csv.iloc[index]['Path']
       img = Image.open(img_path)
       if self.transform:
         img = self.transform(img) # ToTensor converts (HxWxC) -> (CxHxW)
       return index, whale_id, img
     else:
-      #img_num = random.randint(0, len(os.listdir('.')) - 1)
       img_path = os.listdir('./data/test')[index]
       img = Image.open('./data/test/' + img_path)
       if self.transform:
@@ -38,10 +37,11 @@ class WhalesDataset(data.dataset.Dataset):
       return index, img_path, img
 
 def train():
-  num_classes = len(train_csv['Id'].unique())
+  num_classes = len(train_labels)
   # Hyperparameters
   num_epochs = 15
-  learning_rate = 0.001
+  first_learning_rate = 0.001
+  second_learning_rate = 0.0001
   train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
@@ -54,6 +54,7 @@ def train():
     transforms.RandomResizedCrop(size=256),
     transforms.RandomRotation(15),
     transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.3),
     transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(224), # ImageNet standard
     transforms.ToTensor(),
@@ -77,8 +78,8 @@ def train():
   test_loader = data.DataLoader(test_set, **test_params)
 
   device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-  #model = torchvision.models.resnet50(pretrained=True).to(device)
-  model = torchvision.models.resnet101(pretrained=True).to(device)
+  model = torchvision.models.resnet50(pretrained=True).to(device)
+  #model = torchvision.models.resnet101(pretrained=True).to(device)
   model = nn.DataParallel(model) # enable parallelism
   # Freeze all layers
   for i, param in model.named_parameters():
@@ -89,13 +90,18 @@ def train():
   model.module.fc = nn.Linear(imagenet_features, num_classes)
     
   criterion = nn.CrossEntropyLoss()
-  optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+  optimizer = torch.optim.Adam(model.parameters(), lr=first_learning_rate)
     
   # Train the network
   total_steps = len(train_loader)
   iterations = []
   losses = []
   for epoch in range(num_epochs):
+    # Train whole model
+    if epoch == 3:
+      for i, param in model.named_parameters():
+        param.requires_grad = True
+      optimizer = torch.optim.Adam(model.parameters(), lr=second_learning_rate)
     for i, (_, whale_ids, images) in enumerate(train_loader):
       whale_ids = torch.tensor(np.array(whale_ids)).to(device)
       whale_ids.cuda()
@@ -160,8 +166,8 @@ def train_acc(model, loader, num_iters):
       outputs = model(images)
       _, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
       for i in range(predicted.shape[0]):
-        true_label = train_csv['Id'].unique()[whale_ids[i]]
-        predicted_labels = [train_csv['Id'].unique()[predicted[i, j]] for j in range(5)]
+        true_label = train_labels[whale_ids[i]]
+        predicted_labels = [train_labels[predicted[i, j]] for j in range(5)]
         acc += map_for_image(true_label, predicted_labels)
       iters += 1
       if iters == num_iters:
@@ -181,7 +187,7 @@ def make_predictions(model, loader):
       _, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
      
       for i in range(predicted.shape[0]):
-        predicted_labels = [train_csv['Id'].unique()[predicted[i, j]] for j in range(5)]
+        predicted_labels = [train_labels[predicted[i, j]] for j in range(5)]
         # Store csv rows
         if image_paths[i] not in seenImg:
           row = [image_paths[i]]
@@ -204,5 +210,8 @@ if __name__ == '__main__':
   train_csv = pd.read_csv(csv_path)
   # Add absolute image path to make reading easier
   train_csv['Path'] = [os.path.join(train_path, img) for img in train_csv['Image']]
-  train_labels_map = {train_csv['Id'].unique()[i] : i for i in range(0, len(train_csv['Id'].unique()))}
+  train_labels = train_csv['Id'].unique()
+  train_labels_map = {train_labels[i] : i for i in range(0, len(train_labels))}
+  # Remove new_whales
+  train_csv = train_csv[train_csv['Id'] != 'new_whale']
   train()
