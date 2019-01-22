@@ -41,7 +41,7 @@ def train():
   # Hyperparameters
   num_epochs = 15
   first_learning_rate = 0.001
-  second_learning_rate = 0.0001
+  second_learning_rate = 0.00025
   train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
@@ -163,11 +163,13 @@ def train_acc(model, loader, num_iters):
       batch_size = len(whale_ids)
       whale_ids = torch.tensor(np.array(whale_ids)).cuda()
       model.cuda()
-      outputs = model(images)
-      _, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
+      outputs = nn.functional.softmax(model(images), 1)
+      probs, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
       for i in range(predicted.shape[0]):
         true_label = train_labels[whale_ids[i]]
         predicted_labels = [train_labels[predicted[i, j]] for j in range(5)]
+        if probs[i, 0] < new_whale_thresh and 'new_whale' not in predicted_labels:
+          predicted_labels = ['new_whale'] + predicted_labels[:4]
         acc += map_for_image(true_label, predicted_labels)
       iters += 1
       if iters == num_iters:
@@ -175,6 +177,7 @@ def train_acc(model, loader, num_iters):
         return acc / batch_size / iters
     model.train() # reset model
     return acc / batch_size / iters
+
 def make_predictions(model, loader):
   model.eval() # eval mode
   with torch.no_grad():
@@ -183,11 +186,13 @@ def make_predictions(model, loader):
     for _, image_paths, images in loader:
       images = images.cuda()
       model.cuda()
-      outputs = model(images)
-      _, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
+      outputs = nn.functional.softmax(model(images), 1)
+      probs, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
      
       for i in range(predicted.shape[0]):
         predicted_labels = [train_labels[predicted[i, j]] for j in range(5)]
+        if probs[i, 0] < new_whale_thresh and 'new_whale' not in predicted_labels:
+          predicted_labels = ['new_whale'] + predicted_labels[:4]
         # Store csv rows
         if image_paths[i] not in seenImg:
           row = [image_paths[i]]
@@ -206,12 +211,14 @@ if __name__ == '__main__':
   csv_path = os.path.abspath('./data/train.csv')
   test_csv_path = os.path.abspath('./predictions.csv')
 
+  new_whale_thresh = 0.99  
+
   # Read train.csv into Pandas dataframe
   train_csv = pd.read_csv(csv_path)
+  # Remove new whales
+  train_csv = train_csv[train_csv['Id'] != 'new_whale']
   # Add absolute image path to make reading easier
   train_csv['Path'] = [os.path.join(train_path, img) for img in train_csv['Image']]
   train_labels = train_csv['Id'].unique()
   train_labels_map = {train_labels[i] : i for i in range(0, len(train_labels))}
-  # Remove new_whales
-  train_csv = train_csv[train_csv['Id'] != 'new_whale']
   train()
