@@ -25,7 +25,7 @@ class WhalesDataset(data.dataset.Dataset):
     if self.is_train:
       whale_id = train_labels_map[train_csv.iloc[index]['Id']] # [] is loc so use iloc!!!
       img_path = train_csv.iloc[index]['Path']
-      img = Image.open(img_path)
+      img = Image.open(img_path).convert('RGB')
       if self.transform:
         img = self.transform(img) # ToTensor converts (HxWxC) -> (CxHxW)
       return index, whale_id, img
@@ -39,9 +39,9 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_labels)
   # Hyperparameters
-  num_epochs = 15
+  num_epochs = 40
   first_learning_rate = 0.001
-  second_learning_rate = 0.00025
+  second_learning_rate = 0.00015
   train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
@@ -55,14 +55,14 @@ def train():
     transforms.RandomRotation(15),
     transforms.RandomHorizontalFlip(),
     transforms.ColorJitter(brightness=0.3),
-    transforms.Grayscale(num_output_channels=3),
+    # transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(224), # ImageNet standard
     transforms.ToTensor(),
     transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
   ])
 
   test_process_steps = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
+    # transforms.Grayscale(num_output_channels=3),
     transforms.Resize(256),
     transforms.CenterCrop(224), # to handle images larger, have to modify last layer's input features
     transforms.ToTensor(),
@@ -156,7 +156,7 @@ def train_acc(model, loader, num_iters):
   model.eval()
   
   acc = 0.0
-  iters = 1
+  iters = 0
   with torch.no_grad():
     for _, whale_ids, images in loader:
       images = images.cuda()
@@ -168,8 +168,10 @@ def train_acc(model, loader, num_iters):
       for i in range(predicted.shape[0]):
         true_label = train_labels[whale_ids[i]]
         predicted_labels = [train_labels[predicted[i, j]] for j in range(5)]
-        if probs[i, 0] < new_whale_thresh and 'new_whale' not in predicted_labels:
-          predicted_labels = ['new_whale'] + predicted_labels[:4]
+        for pred_idx in range(5):
+            if probs[i, pred_idx] < new_whale_thresh and 'new_whale' not in predicted_labels:
+              predicted_labels.insert(pred_idx, 'new_whale')
+              predicted_labels = predicted_labels[:5]
         acc += map_for_image(true_label, predicted_labels)
       iters += 1
       if iters == num_iters:
@@ -191,8 +193,10 @@ def make_predictions(model, loader):
      
       for i in range(predicted.shape[0]):
         predicted_labels = [train_labels[predicted[i, j]] for j in range(5)]
-        if probs[i, 0] < new_whale_thresh and 'new_whale' not in predicted_labels:
-          predicted_labels = ['new_whale'] + predicted_labels[:4]
+        for pred_idx in range(5):
+          if probs[i, pred_idx] < new_whale_thresh and 'new_whale' not in predicted_labels:
+            predicted_labels.insert(pred_idx, 'new_whale')        
+            predicted_labels = predicted_labels[:5]
         # Store csv rows
         if image_paths[i] not in seenImg:
           row = [image_paths[i]]
@@ -211,7 +215,7 @@ if __name__ == '__main__':
   csv_path = os.path.abspath('./data/train.csv')
   test_csv_path = os.path.abspath('./predictions.csv')
 
-  new_whale_thresh = 0.99  
+  new_whale_thresh = 0.4
 
   # Read train.csv into Pandas dataframe
   train_csv = pd.read_csv(csv_path)
