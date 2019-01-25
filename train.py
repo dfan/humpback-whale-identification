@@ -39,9 +39,10 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_labels)
   # Hyperparameters
-  num_epochs = 25
-  first_learning_rate = 0.001
-  second_learning_rate = 0.00015
+  num_epochs = 50
+  first_learning_rate = 0.0001
+  second_learning_rate = 0.000075
+  third_learning_rate = 0.00005
   train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
@@ -107,7 +108,11 @@ def train():
     if epoch == 3:
       for i, param in model.named_parameters():
         param.requires_grad = True
+      optimizer = torch.optim.Adam(model.parameters(), lr=first_learning_rate)
+    if epoch == 15:
       optimizer = torch.optim.Adam(model.parameters(), lr=second_learning_rate)
+    if epoch == 30:
+      optimizer = torch.optim.Adam(model.parameters(), lr=third_learning_rate)
     for i, (_, whale_ids, images) in enumerate(train_loader):
       whale_ids = torch.tensor(np.array(whale_ids)).to(device)
       whale_ids.cuda()
@@ -187,12 +192,14 @@ def train_acc(model, loader, test_steps, num_iters):
     for _, whale_ids, images_orig in loader:
       # Just cropping
       images1 = augment_images(images_orig, test_steps)
-      # Two augmentations
+      # Three augmentations
       images2 = augment_images(images_orig)
       images3 = augment_images(images_orig)
+      images4 = augment_images(images_orig)
       images1 = images1.cuda()
       images2 = images2.cuda()
       images3 = images3.cuda()
+      images4 = augment_images(images_orig)
       batch_size = len(whale_ids)
       whale_ids = torch.tensor(np.array(whale_ids)).cuda()
       model.cuda()
@@ -201,7 +208,8 @@ def train_acc(model, loader, test_steps, num_iters):
       output1 = model(images1)
       output2 = model(images2)
       output3 = model(images3)
-      outputs = (output1 + output2 + output3) / 3
+      output4 = model(images4)
+      outputs = (output1 + output2 + output3) / 4
       outputs = nn.functional.softmax(outputs, 1)
       probs, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
       
@@ -231,16 +239,19 @@ def make_predictions(model, loader, test_steps):
       # Two augmentations
       images2 = augment_images(images_orig)
       images3 = augment_images(images_orig)
+      images4 = augment_images(images_orig)
       images1 = images1.cuda()
       images2 = images2.cuda()
       images3 = images3.cuda()
+      images4 = images4.cuda()
       model.cuda()
 
       # Original unaugmented image (except cropped)
       output1 = model(images1)
       output2 = model(images2)
       output3 = model(images3)
-      outputs = (output1 + output2 + output3) / 3
+      output4 = model(images4)
+      outputs = (output1 + output2 + output3 + output4) / 4
       outputs = nn.functional.softmax(outputs, 1)
       probs, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
      
@@ -268,7 +279,7 @@ if __name__ == '__main__':
   train_path = os.path.abspath('./data/train')
   test_path = os.path.abspath('./data/test')
   csv_path = os.path.abspath('./data/train.csv')
-  test_csv_path = os.path.abspath('./predictions.csv')
+  test_csv_path = os.path.abspath('./predictions2.csv')
 
   new_whale_thresh = 0.4
   imagenet_mean = [0.485, 0.456, 0.406]
