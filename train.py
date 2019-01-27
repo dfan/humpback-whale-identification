@@ -39,10 +39,11 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_labels)
   # Hyperparameters
-  num_epochs = 50
-  first_learning_rate = 0.0001
-  second_learning_rate = 0.000075
-  third_learning_rate = 0.00005
+  num_epochs = 100
+  first_learning_rate = 0.000075
+  second_learning_rate = 0.00005
+  third_learning_rate = 0.000025
+  fourth_learning_rate = 0.00001
   train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
@@ -113,6 +114,8 @@ def train():
       optimizer = torch.optim.Adam(model.parameters(), lr=second_learning_rate)
     if epoch == 30:
       optimizer = torch.optim.Adam(model.parameters(), lr=third_learning_rate)
+    if epoch == 45:
+      optimizer = torch.optim.Adam(model.parameters(), lr=fourth_learning_rate)
     for i, (_, whale_ids, images) in enumerate(train_loader):
       whale_ids = torch.tensor(np.array(whale_ids)).to(device)
       whale_ids.cuda()
@@ -279,7 +282,7 @@ if __name__ == '__main__':
   train_path = os.path.abspath('./data/train')
   test_path = os.path.abspath('./data/test')
   csv_path = os.path.abspath('./data/train.csv')
-  test_csv_path = os.path.abspath('./predictions2.csv')
+  test_csv_path = os.path.abspath('./predictions.csv')
 
   new_whale_thresh = 0.4
   imagenet_mean = [0.485, 0.456, 0.406]
