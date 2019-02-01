@@ -39,7 +39,7 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_labels)
   # Hyperparameters
-  num_epochs = 50
+  num_epochs = 75
   first_learning_rate = 0.000075
   second_learning_rate = 0.00005
   third_learning_rate = 0.000025
@@ -53,6 +53,7 @@ def train():
     transforms.RandomResizedCrop(size=256),
     transforms.RandomRotation(15),
     transforms.RandomHorizontalFlip(),
+    transforms.RandomAffine(30),
     transforms.ColorJitter(brightness=0.3),
     transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(224), # ImageNet standard
@@ -172,6 +173,7 @@ def augment_images(images, test_steps = None):
     transforms.Resize(256),
     transforms.RandomRotation(15),
     transforms.RandomHorizontalFlip(),
+    transforms.RandomAffine(30),
     transforms.ColorJitter(brightness=0.3),
     transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(224),
