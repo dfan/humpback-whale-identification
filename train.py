@@ -39,7 +39,7 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_labels)
   # Hyperparameters
-  num_epochs = 100
+  num_epochs = 50
   first_learning_rate = 0.000075
   second_learning_rate = 0.00005
   third_learning_rate = 0.000025
@@ -95,7 +95,7 @@ def train():
   # ImageNet has 1000 classes, so we need to change last layer to accomodate the number of classes we have
   # If wrapped in DataParallel, use .module.fc instead of .fc
   imagenet_features = model.module.fc.in_features
-  model.module.fc = nn.Linear(imagenet_features, num_classes)
+  model.module.fc = nn.Sequential(nn.BatchNorm1d(imagenet_features), nn.Dropout(p=0.5), nn.Linear(imagenet_features, num_classes))
     
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.Adam(model.parameters(), lr=first_learning_rate)
@@ -284,7 +284,7 @@ if __name__ == '__main__':
   csv_path = os.path.abspath('./data/train.csv')
   test_csv_path = os.path.abspath('./predictions.csv')
 
-  new_whale_thresh = 0.4
+  new_whale_thresh = 0.38
   imagenet_mean = [0.485, 0.456, 0.406]
   imagenet_std = [0.229, 0.224, 0.225]
 
