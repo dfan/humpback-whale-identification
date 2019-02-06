@@ -30,8 +30,8 @@ class WhalesDataset(data.dataset.Dataset):
         img = self.transform(img) # ToTensor converts (HxWxC) -> (CxHxW)
       return index, whale_id, img
     else:
-      img_path = os.listdir('./data/test')[index]
-      img = Image.open('./data/test/' + img_path)
+      img_path = os.listdir(test_path)[index]
+      img = Image.open(os.path.join(test_path, img_path))
       if self.transform:
         img = self.transform(img) # ToTensor converts (HxWxC) -> (CxHxW)
       return index, img_path, img
@@ -39,11 +39,8 @@ class WhalesDataset(data.dataset.Dataset):
 def train():
   num_classes = len(train_labels)
   # Hyperparameters
-  num_epochs = 75
-  first_learning_rate = 0.000075
-  second_learning_rate = 0.00005
-  third_learning_rate = 0.000025
-  fourth_learning_rate = 0.00001
+  num_epochs = 100
+  learning_rate = 0.000025
   train_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   test_params = {'batch_size': 20, 'shuffle': True, 'num_workers': 5}
   train_valid_params = {'batch_size': 40, 'shuffle': True, 'num_workers': 5}
@@ -53,7 +50,6 @@ def train():
     transforms.RandomResizedCrop(size=256),
     transforms.RandomRotation(15),
     transforms.RandomHorizontalFlip(),
-    transforms.RandomAffine(30),
     transforms.ColorJitter(brightness=0.3),
     transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(224), # ImageNet standard
@@ -99,7 +95,7 @@ def train():
   model.module.fc = nn.Sequential(nn.BatchNorm1d(imagenet_features), nn.Dropout(p=0.5), nn.Linear(imagenet_features, num_classes))
     
   criterion = nn.CrossEntropyLoss()
-  optimizer = torch.optim.Adam(model.parameters(), lr=first_learning_rate)
+  optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     
   # Train the network
   total_steps = len(train_loader)
@@ -110,13 +106,7 @@ def train():
     if epoch == 3:
       for i, param in model.named_parameters():
         param.requires_grad = True
-      optimizer = torch.optim.Adam(model.parameters(), lr=first_learning_rate)
-    if epoch == 15:
-      optimizer = torch.optim.Adam(model.parameters(), lr=second_learning_rate)
-    if epoch == 30:
-      optimizer = torch.optim.Adam(model.parameters(), lr=third_learning_rate)
-    if epoch == 45:
-      optimizer = torch.optim.Adam(model.parameters(), lr=fourth_learning_rate)
+      optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     for i, (_, whale_ids, images) in enumerate(train_loader):
       whale_ids = torch.tensor(np.array(whale_ids)).to(device)
       whale_ids.cuda()
@@ -173,7 +163,6 @@ def augment_images(images, test_steps = None):
     transforms.Resize(256),
     transforms.RandomRotation(15),
     transforms.RandomHorizontalFlip(),
-    transforms.RandomAffine(30),
     transforms.ColorJitter(brightness=0.3),
     transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(224),
@@ -214,7 +203,7 @@ def train_acc(model, loader, test_steps, num_iters):
       output2 = model(images2)
       output3 = model(images3)
       output4 = model(images4)
-      outputs = (output1 + output2 + output3) / 4
+      outputs = (output1 + output2 + output3 + output4) / 4
       outputs = nn.functional.softmax(outputs, 1)
       probs, predicted = torch.topk(outputs.data, 5, dim=1) # batch_size x 5
       
@@ -281,8 +270,8 @@ def make_predictions(model, loader, test_steps):
 
 if __name__ == '__main__':
   # Set paths
-  train_path = os.path.abspath('./data/train')
-  test_path = os.path.abspath('./data/test')
+  train_path = os.path.abspath('./data/train_cropped')
+  test_path = os.path.abspath('./data/test_cropped')
   csv_path = os.path.abspath('./data/train.csv')
   test_csv_path = os.path.abspath('./predictions.csv')
 
